@@ -3,6 +3,17 @@ This lab builds upon lab 1
 
 ## 5. Build the Docker Images and push them to ECR
 
+Populate some environment variables that we will be using
+
+```
+STACK_NAME=eksctl-$CLUSTER-cluster
+
+VPC_ID=$(aws cloudformation describe-stacks --stack-name "$STACK_NAME" | jq -r '[.Stacks[0].Outputs[] | {key: .OutputKey, value: .OutputValue}] | from_entries' | jq -r '.VPC')
+
+AWS_ACCOUNT_ID=$(aws sts get-caller-identity | jq -r '.Account')
+
+```
+
 First create the ECR repositories for the 2 applications.
 
 ```
@@ -28,9 +39,9 @@ Go to the folder examples/apps/colorapp/src/colorteller. Execute a docker build 
 ```
 cd ~/environment/aws-app-mesh-examples/examples/apps/colorapp/src/colorteller
 
-docker build -t XXXXXXXXXXXX.dkr.ecr.ap-southeast-1.amazonaws.com/colorteller .
+docker build -t $AWS_ACCOUNT_ID.dkr.ecr.ap-southeast-1.amazonaws.com/colorteller .
 
-docker push XXXXXXXXXXXX.dkr.ecr.ap-southeast-1.amazonaws.com/colorteller:latest
+docker push $AWS_ACCOUNT_ID.dkr.ecr.ap-southeast-1.amazonaws.com/colorteller:latest
 ```
 
 Go to the folder examples/apps/colorapp/src/gateway. Execute a docker build with the respective repository uri for colorgateway and push it to the repository.
@@ -38,94 +49,133 @@ Go to the folder examples/apps/colorapp/src/gateway. Execute a docker build with
 ```
 cd ~/environment/aws-app-mesh-examples/examples/apps/colorapp/src/gateway
 
-docker build -t XXXXXXXXXXXX.dkr.ecr.ap-southeast-1.amazonaws.com/colorgateway .
+docker build -t $AWS_ACCOUNT_ID.dkr.ecr.ap-southeast-1.amazonaws.com/colorgateway .
 
-docker push XXXXXXXXXXXX.dkr.ecr.ap-southeast-1.amazonaws.com/colorgateway:latest
-```
-
-## 6. Install App Mesh controller and sidecar injector
-
-When you use AWS App Mesh with Kubernetes, you manage App Mesh resources, such as virtual services and virtual nodes, that align to Kubernetes resources, such as services and deployments. You also add the App Mesh sidecar container images to Kubernetes pod specifications. This tutorial guides you through the installation of the following open source components that automatically complete these tasks for you when you work with Kubernetes resources: 
-
-**App Mesh control controller**
-
-Attach the AWSAppMeshFullAccess policy to the role that is attached to your Kubernetes worker nodes.
-
-```
-sudo yum install -y jq
-
-STACK_NAME=$(eksctl get nodegroup --cluster $CLUSTER -o json | jq -r '.[].StackName')
-
-ROLE_NAME=$(aws cloudformation describe-stack-resources --stack-name $STACK_NAME | jq -r '.StackResources[] | select(.ResourceType=="AWS::IAM::Role") | .PhysicalResourceId')
-
-echo "export ROLE_NAME=${ROLE_NAME}" | tee -a ~/.bash_profile
-
-aws iam attach-role-policy --role-name $ROLE_NAME --policy-arn 'arn:aws:iam::aws:policy/AWSAppMeshFullAccess'
+docker push $AWS_ACCOUNT_ID.dkr.ecr.ap-southeast-1.amazonaws.com/colorgateway:latest
 
 ```
 
-Deploy the APP Mesh controller
+## 6. Deploy the ALB Ingress Controller
 
-```
-curl https://raw.githubusercontent.com/aws/aws-app-mesh-controller-for-k8s/master/deploy/all.yaml | kubectl apply -f -
-
-kubectl rollout status deployment app-mesh-controller -n appmesh-system
-
-kubectl get crd
-
-```
-
-**App Mesh sidecar injector**
-
-```
-export MESH_NAME=appmesh-lab
-
-export MESH_REGION=ap-southeast-1
-
-curl https://raw.githubusercontent.com/aws/aws-app-mesh-inject/master/scripts/install.sh | bash
-
-kubectl label namespace default appmesh.k8s.aws/sidecarInjectorWebhook=enabled
-
-```
-
-
-## 6. Create AppMesh and the required configuration
-
-The following diagram represents the abstract view in terms of App Mesh resources:
+We will deploy the ALB ingress controller for ingress-based load balancing to Fargate pods.
 
 ![img1]
 
-[img1]:https://github.com/tohwsw/aws-eks-workshop/blob/master/Lab2-AppMesh-with-ColorTeller/img/appmesh.png
+[img1]:https://github.com/tohwsw/aws-eks-workshop-fargate/blob/master/Lab2-AppMesh-with-ColorTeller/img/ALB-Ingress-Controller-Fargate-architecture_pod.png
 
-Create the App Mesh
+To get started, we’ll implement IAM roles for service accounts on our cluster in order to give fine-grained IAM permissions to our ingress controller pods.
 
-```
-curl https://raw.githubusercontent.com/tohwsw/aws-eks-workshop/master/Lab2-AppMesh-with-ColorTeller/appmesh.yml | kubectl apply -f -
-
-```
-
-Copy and paste these three virtual node definitions into your terminal to create the black, blue, and red collorteller virtual nodes:
+First setup the OIDC ID provider (IdP) in AWS. This step is needed to give IAM permissions to a Fargate pod running in the cluster using the IAM for Service Accounts feature. Let’s setup the OIDC provider for your cluster it with the following command.
 
 ```
-curl https://raw.githubusercontent.com/tohwsw/aws-eks-workshop/master/Lab2-AppMesh-with-ColorTeller/virtualnode.yml | kubectl apply -f -
+eksctl utils associate-iam-oidc-provider --cluster $CLUSTER --approve
 
 ```
 
-Create the virtual service
+
+
+The next step is to create the IAM policy that will be used by the ALB Ingress Controller deployment. This policy will be later associated to the Kubernetes service account and will allow the ALB Ingress Controller pods to create and manage the ALB’s resources in your AWS account for you.
 
 ```
-curl https://raw.githubusercontent.com/tohwsw/aws-eks-workshop/master/Lab2-AppMesh-with-ColorTeller/virtualservice.yml | kubectl apply -f -
+wget -O alb-ingress-iam-policy.json https://raw.githubusercontent.com/kubernetes-sigs/aws-alb-ingress-controller/master/docs/examples/iam-policy.json
+
+aws iam create-policy --policy-name ALBIngressControllerIAMPolicy --policy-document file://alb-ingress-iam-policy.json
 
 ```
 
-Up to this point, we’ve created all required components of the app mesh (virtual services, virtual nodes, virtual routers, and routes) to support our application.
+To create a service account, run the following command:
+
+```
+eksctl create iamserviceaccount --name alb-ingress-controller --namespace kube-system --cluster $CLUSTER --attach-policy-arn arn:aws:iam::$AWS_ACCOUNT_ID:policy/ALBIngressControllerIAMPolicy --approve --override-existing-serviceaccounts
+
+STACK_NAME=eksctl-$CLUSTER-addon-iamserviceaccount-kube-system-alb-ingress-controller
+
+ROLE_ARN=$(aws cloudformation describe-stacks --stack-name "$STACK_NAME" | jq -r '[.Stacks[0].Outputs[] | {key: .OutputKey, value: .OutputValue}] | from_entries' | jq -r '.Role1')
+
+```
+
+create RBAC permissions and a service account for the ALB Ingress Controller
+
+```
+curl -O https://raw.githubusercontent.com/kubernetes-sigs/aws-alb-ingress-controller/v1.1.4/docs/examples/rbac-role.yaml
+
+```
+
+Print out the role that was created earlier
+
+```
+echo $ROLE_ARN
+
+```
+
+Open the rbac-role.yaml file in a text editor, and then make the following changes only to the ServiceAccount section.
+
+```
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  labels:
+    app.kubernetes.io/name: alb-ingress-controller
+  annotations:                                                                        # Add the annotations line
+    eks.amazonaws.com/role-arn: arn:aws:iam::<AWS_ACCOUNT_ID>:role/<IAM_ROLE_NAME>    # Add the IAM role
+  name: alb-ingress-controller
+  namespace: kube-system
+
+ ```
+
+Save the rbac-role.yaml file, and then run the following command:
+
+```
+kubectl apply -f rbac-role.yaml
+
+```
+
+Download the file to set up the controller
+
+```
+
+curl -O https://raw.githubusercontent.com/kubernetes-sigs/aws-alb-ingress-controller/v1.1.5/docs/examples/alb-ingress-controller.yaml
+
+```
+
+Make the following changes
+
+```
+
+    spec:
+      containers:
+      - args:
+        - --ingress-class=alb
+        - --cluster-name=$CLUSTER	               	#<-- Add the cluster name
+        - --aws-vpc-id=$VPC_ID	         		#<-- Add the VPC ID 
+        - --aws-region=ap-southeast-1			        	#<-- Add the region 
+        image: docker.io/amazon/aws-alb-ingress-controller:v1.1.5	#<======= Please make sure the Image is 1.1.4 and above. 
+        imagePullPolicy: IfNotPresent
+
+```
+
+To apply the alb-ingress-controller.yaml file, run the following command:
+
+```
+kubectl apply -f alb-ingress-controller.yaml
+
+```
+
+To check the status of the alb-ingress-controller deployment, run the following command:
+
+```
+
+kubectl rollout status deployment alb-ingress-controller -n kube-system
+
+
+```
 
 ## 7. Deploy the application
 
 To deploy the app, download colorapp.yml and and deploy it.
 
 ```
-curl -O https://raw.githubusercontent.com/tohwsw/aws-eks-workshop/master/Lab2-AppMesh-with-ColorTeller/colorapp.yml
+curl -O https://raw.githubusercontent.com/tohwsw/aws-eks-workshop-fargate/master/Lab2-AppMesh-with-ColorTeller/colorapp.yml
 
 ```
 
@@ -133,7 +183,7 @@ curl -O https://raw.githubusercontent.com/tohwsw/aws-eks-workshop/master/Lab2-Ap
 You can do so by substituting the account id 284245693010 with your own.
 
 ```
-sed -i 's/284245693010/<your account id>/g' colorapp.yml
+sed -i 's/284245693010/$AWS_ACCOUNT_ID/g' colorapp.yml
 
 ```
 
@@ -142,6 +192,15 @@ Next, deploy the applications.
 
 ```
 kubectl apply -f colorapp.yml
+
+```
+
+Next, deploy the ingress
+
+```
+curl -O https://raw.githubusercontent.com/tohwsw/aws-eks-workshop-fargate/master/Lab2-AppMesh-with-ColorTeller/colorapp-ingress.yml
+
+kubectl apply -f colorapp-ingress.yml
 
 ```
 
@@ -155,26 +214,23 @@ kubectl get pods
 
 ## 8. Test the application
 
-A network load balancer is also deployed. Identify the address of the elb via the command.
+An application load balancer is also deployed. Identify the address of the alb via the command.
 
 ```
-export NLB=$(kubectl get svc -o wide |grep colorgateway | awk '{print $4}')
-
-```
-
-
-Next, paste the following to repeatedly request the colorgateway service. Remember to replace the address of the elb with your own. Do note that the elb might take a few minutes to become active.
-
-```
-while [ 1 ]; do  curl -s --connect-timeout 2 $NLB:/color;echo;sleep 1; done
+export ALB=$(kubectl get ingress -o wide |grep colorapp-ingress | awk '{print $3}')
 
 ```
 
-You should see a different color is returned on each request. This is because colorgateway always forwards to colorteller, which via the colorteller-route, always routes to one of the color backends.
 
-Let’s modify the colorteller-route so it instead routes to the blue, red, and black colorteller virtual nodes, each at a 30% weighted ratio.
+Next, paste the following to request the colorgateway service. Do note that the alb might take a few minutes to become active.
 
-If you look at the curler terminal, you should now see an equal distribution of traffic to the blue, red, and black virtual nodes. This shows that App Mesh is now controlling the distribution of traffic!
+```
+while [ 1 ]; do  curl -s --connect-timeout 2 $ALB:/color;echo;sleep 1; done
+
+```
+
+You should see the default color white is returned on each request.
+
 
 ## 9. Lab Cleanup
 

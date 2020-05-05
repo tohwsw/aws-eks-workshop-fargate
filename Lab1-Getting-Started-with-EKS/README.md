@@ -97,45 +97,48 @@ Create a basic EKS cluster
 
 ```
 export CLUSTER=<Your cluster name>
-eksctl create cluster --name=$CLUSTER --region ap-southeast-1 --node-type t3.medium --managed
+eksctl create cluster --name=$CLUSTER --region ap-southeast-1 --fargate
 
 ```
 
-A cluster will be created with default parameters
+A cluster will be created with the following
 
-  - 2x t3.medium nodes in a managed node group
-  - use official AWS EKS AMI
+  - uses fargate serverless compute
   - ap-southeast-1 region
-  - dedicated VPC (check your quotas)
+  - dedicated VPC
+  - public and private subnets in 3 AZs
+  - fargate profile with selectors for all pods in the kube-system and default namespaces. 
 
 Example output:
 
 ```
+[ℹ]  eksctl version 0.19.0-rc.0
 [ℹ]  using region ap-southeast-1
-[ℹ]  setting availability zones to [ap-southeast-1a ap-southeast-1c ap-southeast-1b]
-[ℹ]  subnets for ap-southeast-1a - public:192.168.0.0/19 private:192.168.96.0/19
+[ℹ]  setting availability zones to [ap-southeast-1b ap-southeast-1c ap-southeast-1a]
+[ℹ]  subnets for ap-southeast-1b - public:192.168.0.0/19 private:192.168.96.0/19
 [ℹ]  subnets for ap-southeast-1c - public:192.168.32.0/19 private:192.168.128.0/19
-[ℹ]  subnets for ap-southeast-1b - public:192.168.64.0/19 private:192.168.160.0/19
-[ℹ]  nodegroup "ng-3e4f648b" will use "ami-07b922b9b94d9a6d2" [AmazonLinux2/1.12]
-[ℹ]  creating EKS cluster "sgeks3" in "ap-southeast-1" region
-[ℹ]  will create 2 separate CloudFormation stacks for cluster itself and the initial nodegroup
-[ℹ]  if you encounter any issues, check CloudFormation console or try 'eksctl utils describe-stacks --region=ap-southeast-1 --name=sgeks3'
-[ℹ]  2 sequential tasks: { create cluster control plane "sgeks3", create nodegroup "ng-3e4f648b" }
-[ℹ]  building cluster stack "eksctl-sgeks3-cluster"
-[ℹ]  deploying stack "eksctl-sgeks3-cluster"
-[ℹ]  building nodegroup stack "eksctl-sgeks3-nodegroup-ng-3e4f648b"
-[ℹ]  --nodes-min=2 was set automatically for nodegroup ng-3e4f648b
-[ℹ]  --nodes-max=2 was set automatically for nodegroup ng-3e4f648b
-[ℹ]  deploying stack "eksctl-sgeks3-nodegroup-ng-3e4f648b"
-[✔]  all EKS cluster resource for "sgeks3" had been created
+[ℹ]  subnets for ap-southeast-1a - public:192.168.64.0/19 private:192.168.160.0/19
+[ℹ]  using Kubernetes version 1.15
+[ℹ]  creating EKS cluster "fargatecluster1" in "ap-southeast-1" region with Fargate profile
+[ℹ]  if you encounter any issues, check CloudFormation console or try 'eksctl utils describe-stacks --region=ap-southeast-1 --cluster=fargatecluster1'
+[ℹ]  CloudWatch logging will not be enabled for cluster "fargatecluster1" in "ap-southeast-1"
+[ℹ]  you can enable it with 'eksctl utils update-cluster-logging --region=ap-southeast-1 --cluster=fargatecluster1'
+[ℹ]  Kubernetes API endpoint access will use default of {publicAccess=true, privateAccess=false} for cluster "fargatecluster1" in "ap-southeast-1"
+[ℹ]  1 task: { create cluster control plane "fargatecluster1" }
+[ℹ]  building cluster stack "eksctl-fargatecluster1-cluster"
+[ℹ]  deploying stack "eksctl-fargatecluster1-cluster"
+[ℹ]  waiting for the control plane availability...
 [✔]  saved kubeconfig as "/home/ec2-user/.kube/config"
-[ℹ]  adding role "arn:aws:iam::284245693010:role/eksctl-sgeks3-nodegroup-ng-3e4f64-NodeInstanceRole-1BBBB85I5CX5C" to auth ConfigMap
-[ℹ]  nodegroup "ng-3e4f648b" has 0 node(s)
-[ℹ]  waiting for at least 2 node(s) to become ready in "ng-3e4f648b"
-[ℹ]  nodegroup "ng-3e4f648b" has 2 node(s)
-[ℹ]  node "ip-192-168-28-95.ap-southeast-1.compute.internal" is ready
-[ℹ]  node "ip-192-168-65-212.ap-southeast-1.compute.internal" is ready
-[✔]  EKS cluster "sgeks3" in "ap-southeast-1" region is ready
+[ℹ]  no tasks
+[✔]  all EKS cluster resources for "fargatecluster1" have been created
+[ℹ]  creating Fargate profile "fp-default" on EKS cluster "fargatecluster1"
+
+[ℹ]  created Fargate profile "fp-default" on EKS cluster "fargatecluster1"
+[ℹ]  "coredns" is now schedulable onto Fargate
+[ℹ]  "coredns" is now scheduled onto Fargate
+[ℹ]  "coredns" pods are now scheduled onto Fargate
+[ℹ]  kubectl command should work with "/home/ec2-user/.kube/config", try 'kubectl get nodes'
+[✔]  EKS cluster "fargatecluster1" in "ap-southeast-1" region is ready
 ```
 
 Once you have created a cluster, you will find that cluster credentials were added in ~/.kube/config.
@@ -153,11 +156,11 @@ kubectl get svc
 You should see a kubernetes svc as an output.
 
 ```
-kubectl get nodes
+kubectl get pods --ns kube-system 
 
 ```
 
-You should be able to see 2 EC2 worker nodes as output
+You should be able to see the coredns pods running on fargate.
 
 You have now completed setting up the eks cluster!
 

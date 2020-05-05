@@ -5,7 +5,7 @@ metadata:
   labels:
     app: colorgateway
   annotations:
-   service.beta.kubernetes.io/aws-load-balancer-type: nlb
+   alb.ingress.kubernetes.io/target-type: ip
 spec:
   ports:
   - name: http
@@ -14,7 +14,7 @@ spec:
     targetPort: 9080
   selector:
     app: colorgateway
-  type: LoadBalancer
+  type: NodePort
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -36,7 +36,7 @@ spec:
     spec:
       containers:
         - name: colorgateway
-          image: "284245693010.dkr.ecr.ap-southeast-1.amazonaws.com/colorgateway:latest"
+          image: "571708975227.dkr.ecr.ap-southeast-1.amazonaws.com/colorgateway:latest"
           ports:
             - containerPort: 9080
           env:
@@ -83,7 +83,7 @@ spec:
     spec:
       containers:
         - name: colorteller
-          image: 284245693010.dkr.ecr.ap-southeast-1.amazonaws.com/colorteller:latest
+          image: 571708975227.dkr.ecr.ap-southeast-1.amazonaws.com/colorteller:latest
           ports:
             - containerPort: 9080
           env:
@@ -91,139 +91,3 @@ spec:
               value: "9080"
             - name: "COLOR"
               value: "white"
-
-
----
-
-
-# black
-apiVersion: v1
-kind: Service
-metadata:
-  name: colorteller-black
-  labels:
-    app: colorteller
-    version: black
-spec:
-  ports:
-  - port: 9080
-    name: http
-  selector:
-    app: colorteller
-    version: black
----
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: colorteller-black
-spec:
-  replicas: 1
-  selector:
-    matchLabels:
-      app: colorteller
-      version: black
-  template:
-    metadata:
-      labels:
-        app: colorteller
-        version: black
-    spec:
-      containers:
-        - name: colorteller
-          image: 284245693010.dkr.ecr.ap-southeast-1.amazonaws.com/colorteller:latest
-          ports:
-            - containerPort: 9080
-          env:
-            - name: "SERVER_PORT"
-              value: "9080"
-            - name: "COLOR"
-              value: "black"
----
-
-# blue
-apiVersion: v1
-kind: Service
-metadata:
-  name: colorteller-blue
-  labels:
-    app: colorteller
-    version: blue
-spec:
-  ports:
-  - port: 9080
-    name: http
-  selector:
-    app: colorteller
-    version: blue
----
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: colorteller-blue
-spec:
-  replicas: 1
-  selector:
-    matchLabels:
-      app: colorteller
-      version: blue
-  template:
-    metadata:
-      labels:
-        app: colorteller
-        version: blue
-    spec:
-      containers:
-        - name: colorteller
-          image: 284245693010.dkr.ecr.ap-southeast-1.amazonaws.com/colorteller:latest
-          ports:
-            - containerPort: 9080
-          env:
-            - name: "SERVER_PORT"
-              value: "9080"
-            - name: "COLOR"
-              value: "blue"
-
----
-
-# red
-apiVersion: v1
-kind: Service
-metadata:
-  name: colorteller-red
-  labels:
-    app: colorteller
-    version: red
-spec:
-  ports:
-  - port: 9080
-    name: http
-  selector:
-    app: colorteller
-    version: red
----
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: colorteller-red
-spec:
-  replicas: 1
-  selector:
-    matchLabels:
-      app: colorteller
-      version: red
-  template:
-    metadata:
-      labels:
-        app: colorteller
-        version: red
-    spec:
-      containers:
-        - name: colorteller
-          image: 284245693010.dkr.ecr.ap-southeast-1.amazonaws.com/colorteller:latest
-          ports:
-            - containerPort: 9080
-          env:
-            - name: "SERVER_PORT"
-              value: "9080"
-            - name: "COLOR"
-              value: "red"
