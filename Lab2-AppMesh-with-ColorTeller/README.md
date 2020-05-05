@@ -101,13 +101,6 @@ curl -O https://raw.githubusercontent.com/kubernetes-sigs/aws-alb-ingress-contro
 
 ```
 
-Print out the role that was created earlier
-
-```
-echo $ROLE_ARN
-
-```
-
 Open the rbac-role.yaml file in a text editor, and then make the following changes only to the ServiceAccount section.
 
 ```
@@ -117,7 +110,7 @@ metadata:
   labels:
     app.kubernetes.io/name: alb-ingress-controller
   annotations:                                                                        # Add the annotations line
-    eks.amazonaws.com/role-arn: arn:aws:iam::<AWS_ACCOUNT_ID>:role/<IAM_ROLE_NAME>    # Add the IAM role
+    eks.amazonaws.com/role-arn: $ROLE_ARN    # Add the IAM role
   name: alb-ingress-controller
   namespace: kube-system
 
