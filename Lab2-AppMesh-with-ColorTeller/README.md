@@ -6,6 +6,8 @@ This lab builds upon lab 1
 Populate some environment variables that we will be using
 
 ```
+sudo yum install -y jq
+
 STACK_NAME=eksctl-$CLUSTER-cluster
 
 VPC_ID=$(aws cloudformation describe-stacks --stack-name "$STACK_NAME" | jq -r '[.Stacks[0].Outputs[] | {key: .OutputKey, value: .OutputValue}] | from_entries' | jq -r '.VPC')
@@ -20,18 +22,21 @@ First create the ECR repositories for the 2 applications.
 aws ecr create-repository --repository-name colorteller
 
 aws ecr create-repository --repository-name colorgateway
+
 ```
 
 In the terminal of Cloud9, clone the code
 
 ```
 git clone https://github.com/tohwsw/aws-app-mesh-examples.git
+
 ```
 
 Retrieve the login command to use to authenticate your Docker client to your registry.
 
 ```
 $(aws ecr get-login --no-include-email --region ap-southeast-1)
+
 ```
 
 Go to the folder examples/apps/colorapp/src/colorteller. Execute a docker build with the respective repository uri for colorteller and push it to the repository.
@@ -68,6 +73,8 @@ To get started, we’ll implement IAM roles for service accounts on our cluster 
 First setup the OIDC ID provider (IdP) in AWS. This step is needed to give IAM permissions to a Fargate pod running in the cluster using the IAM for Service Accounts feature. Let’s setup the OIDC provider for your cluster it with the following command.
 
 ```
+cd ~/environment
+
 eksctl utils associate-iam-oidc-provider --cluster $CLUSTER --approve
 
 ```
@@ -110,7 +117,7 @@ metadata:
   labels:
     app.kubernetes.io/name: alb-ingress-controller
   annotations:                                                                        # Add the annotations line
-    eks.amazonaws.com/role-arn: $ROLE_ARN    # Add the IAM role
+    eks.amazonaws.com/role-arn: <$ROLE_ARN>    # Add the IAM role
   name: alb-ingress-controller
   namespace: kube-system
 
@@ -139,8 +146,8 @@ Make the following changes
       containers:
       - args:
         - --ingress-class=alb
-        - --cluster-name=$CLUSTER	               	#<-- Add the cluster name
-        - --aws-vpc-id=$VPC_ID	         		#<-- Add the VPC ID 
+        - --cluster-name=<$CLUSTER>	               	#<-- Add the cluster name
+        - --aws-vpc-id=<$VPC_ID>	         		#<-- Add the VPC ID 
         - --aws-region=ap-southeast-1			        	#<-- Add the region 
         image: docker.io/amazon/aws-alb-ingress-controller:v1.1.5	#<======= Please make sure the Image is 1.1.4 and above. 
         imagePullPolicy: IfNotPresent
@@ -176,7 +183,7 @@ curl -O https://raw.githubusercontent.com/tohwsw/aws-eks-workshop-fargate/master
 You can do so by substituting the account id 284245693010 with your own.
 
 ```
-sed -i 's/284245693010/$AWS_ACCOUNT_ID/g' colorapp.yml
+sed -i 's/571708975227/<$AWS_ACCOUNT_ID>/g' colorapp.yml
 
 ```
 
@@ -185,6 +192,14 @@ Next, deploy the applications.
 
 ```
 kubectl apply -f colorapp.yml
+
+```
+
+Verify the pods are runnning
+
+
+```
+kubectl get pods
 
 ```
 
@@ -197,10 +212,11 @@ kubectl apply -f colorapp-ingress.yml
 
 ```
 
-You can verify that the pods are running properly.
+Verify the ingress is created
+
 
 ```
-kubectl get pods
+kubectl get ingress
 
 ```
 
@@ -210,7 +226,7 @@ kubectl get pods
 An application load balancer is also deployed. Identify the address of the alb via the command.
 
 ```
-export ALB=$(kubectl get ingress -o wide |grep colorapp-ingress | awk '{print $3}')
+export ALB=$(kubectl get ingress -o wide | grep colorgate | awk '{print $3}')
 
 ```
 

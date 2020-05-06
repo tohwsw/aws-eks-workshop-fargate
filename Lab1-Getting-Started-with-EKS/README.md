@@ -156,7 +156,7 @@ kubectl get svc
 You should see a kubernetes svc as an output.
 
 ```
-kubectl get pods --ns kube-system 
+kubectl get pods -n kube-system 
 
 ```
 
