@@ -70,6 +70,10 @@ We will deploy the ALB ingress controller for ingress-based load balancing to Fa
 
 To get started, we’ll implement IAM roles for service accounts on our cluster in order to give fine-grained IAM permissions to our ingress controller pods.
 
+![img2]
+
+[img2]:https://github.com/tohwsw/aws-eks-workshop-fargate/blob/master/Lab2-AppMesh-with-ColorTeller/img/irp-eks-setup.png
+
 First setup the OIDC ID provider (IdP) in AWS. This step is needed to give IAM permissions to a Fargate pod running in the cluster using the IAM for Service Accounts feature. Let’s setup the OIDC provider for your cluster it with the following command.
 
 ```
